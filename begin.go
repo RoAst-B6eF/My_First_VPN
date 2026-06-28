@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -9,13 +10,21 @@ import (
 )
 
 func main() {
-	listener, err := net.Listen("tcp", "0.0.0.0:1081")
+	cert, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
+	if err != nil {
+		log.Fatal("Ошибка загрузки сертификата", err)
+	}
+	config := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+
+	listener, err := tls.Listen("tcp", "0.0.0.0:1081", config)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
 
-	fmt.Println("SOCKS5 прокси запущен на :1081")
+	fmt.Println("SOCKS5 + TLS прокси запущен на :1081")
 
 	for {
 		conn, err := listener.Accept()
@@ -45,6 +54,9 @@ func handleClient(client net.Conn) {
 	io.ReadFull(client, req)
 
 	var targetAddr string
+	fmt.Printf("[%s] тип адреса: 0x%02x команда: 0x%02x версия: 0x%02x\n",
+		client.RemoteAddr(), req[3], req[1], req[0])
+
 	switch req[3] {
 	case 0x01:
 		addr := make([]byte, 4)
