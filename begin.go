@@ -64,19 +64,42 @@ func handleClient(client net.Conn) {
 		io.ReadFull(client, port)
 		targetAddr = fmt.Sprintf("%s:%d",
 			domain, binary.BigEndian.Uint16(port))
+
+	case 0x04:
+		addr := make([]byte, 16)
+		io.ReadFull(client, addr)
+		port := make([]byte, 2)
+		io.ReadFull(client, port)
+		targetAddr = fmt.Sprintf("[%x:%x:%x:%x:%x:%x:%x:%x]:%d",
+			binary.BigEndian.Uint16(addr[0:2]),
+			binary.BigEndian.Uint16(addr[2:4]),
+			binary.BigEndian.Uint16(addr[4:6]),
+			binary.BigEndian.Uint16(addr[6:8]),
+			binary.BigEndian.Uint16(addr[8:10]),
+			binary.BigEndian.Uint16(addr[10:12]),
+			binary.BigEndian.Uint16(addr[12:14]),
+			binary.BigEndian.Uint16(addr[14:16]),
+			binary.BigEndian.Uint16(port))
 	}
+
+	fmt.Printf("[%s] -> %s\n", client.RemoteAddr(), targetAddr)
 
 	remote, err := net.Dial("tcp", targetAddr)
 	if err != nil {
+		fmt.Printf("[%s] Ошибка подключения к %s: %v\n", client.RemoteAddr(), targetAddr, err)
 		client.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
 	defer remote.Close()
 
+	fmt.Printf("[%s] ТУННЕЛЬ ОТКРЫТ -> %s\n", client.RemoteAddr(), targetAddr)
 	client.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 
 	done := make(chan struct{}, 2)
 	go func() { io.Copy(remote, client); done <- struct{}{} }()
 	go func() { io.Copy(client, remote); done <- struct{}{} }()
 	<-done
+
+	fmt.Printf("[%s] ТУННЕЛЬ ЗАКРЫТ <- %s\n", client.RemoteAddr(), targetAddr)
+
 }
